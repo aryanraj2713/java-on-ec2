@@ -278,11 +278,27 @@ jobs:
         mkdir -p /home/ec2-user/deployment
         cd /home/ec2-user/deployment
         
+        echo "System information:"
+        echo "Current user: $(whoami)"
+        echo "Current directory: $(pwd)"
+        echo "Available commands:"
+        echo "  git: $(which git 2>/dev/null || echo 'NOT FOUND')"
+        echo "  python3: $(which python3 2>/dev/null || echo 'NOT FOUND')"
+        echo "  java: $(which java 2>/dev/null || echo 'NOT FOUND')"
+        
         echo "Copying deployment files to deployment directory..."
         cp ~/deployment_script_simple.py ~/secrets_manager_simple.py ~/requirements-secrets-simple.txt .
         
         echo "Installing Python dependencies..."
         pip3 install --user -r requirements-secrets-simple.txt
+        
+        echo "Ensuring git is installed..."
+        if ! command -v git &> /dev/null; then
+          echo "Git not found, installing..."
+          sudo yum install -y git
+        else
+          echo "Git is already installed"
+        fi
         
         echo "Starting deployment..."
         python3 deployment_script_simple.py ${{ github.server_url }}/${{ github.repository }}.git \
