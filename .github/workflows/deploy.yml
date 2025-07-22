@@ -212,9 +212,17 @@ jobs:
       run: |
         mkdir -p ~/.ssh
         
-        # Get private key from AWS Systems Manager Parameter Store
+        # Get the key pair ID first (CDK creates key pairs with auto-generated IDs)
+        KEY_PAIR_ID=$(aws ec2 describe-key-pairs \
+          --key-names ${{ steps.infra.outputs.key_pair_name }} \
+          --query 'KeyPairs[0].KeyPairId' \
+          --output text)
+        
+        echo "Key Pair ID: $KEY_PAIR_ID"
+        
+        # Get private key from AWS Systems Manager Parameter Store (CDK stores it there)
         aws ssm get-parameter \
-          --name /ec2/keypair/${{ steps.infra.outputs.key_pair_name }} \
+          --name "/ec2/keypair/$KEY_PAIR_ID" \
           --with-decryption \
           --query Parameter.Value \
           --output text > ~/.ssh/deploy-key
@@ -325,12 +333,16 @@ jobs:
       run: |
         echo "Cleaning up EC2 instance ${{ steps.launch-ec2.outputs.instance_id }}..."
         
-        aws ec2 terminate-instances --instance-ids ${{ steps.launch-ec2.outputs.instance_id }}
-        
-        echo "Waiting for instance termination..."
-        aws ec2 wait instance-terminated --instance-ids ${{ steps.launch-ec2.outputs.instance_id }}
-        
-        echo "EC2 instance terminated successfully"
+        if [ -n "${{ steps.launch-ec2.outputs.instance_id }}" ]; then
+          aws ec2 terminate-instances --instance-ids ${{ steps.launch-ec2.outputs.instance_id }}
+          
+          echo "Waiting for instance termination..."
+          aws ec2 wait instance-terminated --instance-ids ${{ steps.launch-ec2.outputs.instance_id }}
+          
+          echo "EC2 instance terminated successfully"
+        else
+          echo "No instance ID found, skipping cleanup"
+        fi
 
   security-scan:
     needs: build-push-image
