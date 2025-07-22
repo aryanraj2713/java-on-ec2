@@ -183,12 +183,12 @@ jobs:
     - name: Install AWS CDK
       run: npm install -g aws-cdk
 
-    - name: Deploy EC2 infrastructure
+    - name: Deploy infrastructure
       run: |
         cd cdk-infrastructure
         export ENVIRONMENT_NAME=${{ matrix.environment }}
         cdk bootstrap
-        cdk deploy EC2DeploymentStack-${{ matrix.environment }} --require-approval never --outputs-file ec2-outputs.json
+        cdk deploy EC2DeploymentStack-${{ matrix.environment }} JavaAppStack-${{ matrix.environment }} --require-approval never --outputs-file ec2-outputs.json
 
     - name: Extract infrastructure values
       id: infra
