@@ -108,7 +108,9 @@ Host github.com
             if gradlew_path.exists():
                 print("Making gradlew executable")
                 gradlew_path.chmod(0o755)
-                build_command = [str(gradlew_path), "build"]
+                absolute_gradlew_path = str(gradlew_path.absolute())
+                print(f"Using gradlew at: {absolute_gradlew_path}")
+                build_command = [absolute_gradlew_path, "build"]
             else:
                 print("gradlew not found, trying system gradle")
                 # Try to use system gradle as fallback
