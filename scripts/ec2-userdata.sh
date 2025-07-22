@@ -12,8 +12,8 @@ yum install -y git curl wget
 echo "Installing Python 3.9 from Amazon Linux Extras..."
 amazon-linux-extras install python3.8 -y
 
-echo "Installing Java 17..."
-yum install -y java-17-amazon-corretto-headless
+echo "Installing Java 17 JDK..."
+yum install -y java-17-amazon-corretto-devel
 
 echo "Setting up Python 3.8 as default..."
 alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1
@@ -134,7 +134,7 @@ EOL
 
 echo "Setting up environment variables..."
 cat >> /home/ec2-user/.bashrc << 'EOL'
-export JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto
+export JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto.x86_64
 export PATH=$PATH:$JAVA_HOME/bin:/usr/local/bin
 export AWS_DEFAULT_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
 EOL

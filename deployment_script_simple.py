@@ -200,8 +200,8 @@ Host github.com
     def _find_java_home(self) -> str:
         """Find Java installation dynamically"""
         java_paths_to_try = [
-            "/usr/lib/jvm/java-17-amazon-corretto",
-            "/usr/lib/jvm/java-17-amazon-corretto.x86_64", 
+            "/usr/lib/jvm/java-17-amazon-corretto.x86_64",  # JDK path (prioritized)
+            "/usr/lib/jvm/java-17-amazon-corretto",         # JRE path
             "/usr/lib/jvm/java-17-openjdk",
             "/usr/lib/jvm/java-17",
             "/usr/java/amazon-corretto-17",
@@ -277,9 +277,9 @@ Host github.com
         # Last resort: try to install Java directly
         print("Last resort: Attempting to install Java...")
         try:
-            print("Installing Java 17 Amazon Corretto...")
+            print("Installing Java 17 Amazon Corretto JDK (with compiler)...")
             install_result = subprocess.run(
-                ["sudo", "yum", "install", "-y", "java-17-amazon-corretto-headless"], 
+                ["sudo", "yum", "install", "-y", "java-17-amazon-corretto-devel"], 
                 capture_output=True, 
                 text=True
             )
@@ -291,14 +291,21 @@ Host github.com
             
             if install_result.returncode == 0:
                 print("Java installation completed, re-checking...")
-                # Re-run the search after installation
-                for path in ["/usr/lib/jvm/java-17-amazon-corretto", "/usr/lib/jvm/java-17-amazon-corretto.x86_64"]:
+                # Re-run the search after installation (prioritize JDK)
+                for path in ["/usr/lib/jvm/java-17-amazon-corretto.x86_64", "/usr/lib/jvm/java-17-amazon-corretto"]:
                     java_bin = f"{path}/bin/java"
+                    javac_bin = f"{path}/bin/javac"  # Check for compiler
                     print(f"Re-checking: {java_bin}")
+                    print(f"Checking compiler: {javac_bin}")
                     try:
                         if Path(java_bin).exists():
-                            print(f"Found Java after installation at: {path}")
-                            return path
+                            has_compiler = Path(javac_bin).exists()
+                            print(f"Found Java at: {path} (compiler: {has_compiler})")
+                            if has_compiler:
+                                print(f"Using JDK installation with compiler: {path}")
+                                return path
+                            else:
+                                print(f"JRE found but no compiler, continuing search...")
                     except Exception as e:
                         print(f"Error re-checking {java_bin}: {e}")
                 
