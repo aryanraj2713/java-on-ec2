@@ -223,6 +223,10 @@ Host github.com
         print("Java not found in standard locations, trying system PATH...")
         try:
             which_result = subprocess.run(["which", "java"], capture_output=True, text=True)
+            print(f"which java result: {which_result.returncode}")
+            print(f"which java stdout: '{which_result.stdout.strip()}'")
+            print(f"which java stderr: '{which_result.stderr.strip()}'")
+            
             if which_result.returncode == 0:
                 java_binary_path = which_result.stdout.strip()
                 print(f"Found java binary at: {java_binary_path}")
@@ -236,6 +240,85 @@ Host github.com
                     return None
         except Exception as e:
             print(f"Error finding java in PATH: {e}")
+        
+        # Additional debugging: check what's actually in /usr/lib/jvm/
+        print("Debugging: Checking what's installed in /usr/lib/jvm/...")
+        try:
+            jvm_result = subprocess.run(["ls", "-la", "/usr/lib/jvm/"], capture_output=True, text=True)
+            print(f"ls /usr/lib/jvm/ result: {jvm_result.returncode}")
+            if jvm_result.stdout:
+                print(f"JVM directory contents:\n{jvm_result.stdout}")
+            if jvm_result.stderr:
+                print(f"JVM directory error: {jvm_result.stderr}")
+        except Exception as e:
+            print(f"Error checking JVM directory: {e}")
+        
+        # Check if Java packages are installed
+        print("Debugging: Checking installed Java packages...")
+        try:
+            rpm_result = subprocess.run(["rpm", "-qa", "|", "grep", "java"], shell=True, capture_output=True, text=True)
+            print(f"Java packages found: {rpm_result.returncode}")
+            if rpm_result.stdout:
+                print(f"Installed Java packages:\n{rpm_result.stdout}")
+        except Exception as e:
+            print(f"Error checking Java packages: {e}")
+        
+        # Check userdata log to see if installation happened
+        print("Debugging: Checking userdata log...")
+        try:
+            userdata_result = subprocess.run(["tail", "-20", "/var/log/user-data.log"], capture_output=True, text=True)
+            if userdata_result.returncode == 0 and userdata_result.stdout:
+                print(f"Last 20 lines of userdata log:\n{userdata_result.stdout}")
+            else:
+                print(f"Could not read userdata log: {userdata_result.returncode}")
+        except Exception as e:
+            print(f"Error reading userdata log: {e}")
+        
+        # Last resort: try to install Java directly
+        print("Last resort: Attempting to install Java...")
+        try:
+            print("Installing Java 17 Amazon Corretto...")
+            install_result = subprocess.run(
+                ["sudo", "yum", "install", "-y", "java-17-amazon-corretto-headless"], 
+                capture_output=True, 
+                text=True
+            )
+            print(f"Java installation result: {install_result.returncode}")
+            if install_result.stdout:
+                print(f"Installation stdout: {install_result.stdout[-500:]}")  # Last 500 chars
+            if install_result.stderr:
+                print(f"Installation stderr: {install_result.stderr[-500:]}")  # Last 500 chars
+            
+            if install_result.returncode == 0:
+                print("Java installation completed, re-checking...")
+                # Re-run the search after installation
+                for path in ["/usr/lib/jvm/java-17-amazon-corretto", "/usr/lib/jvm/java-17-amazon-corretto.x86_64"]:
+                    java_bin = f"{path}/bin/java"
+                    print(f"Re-checking: {java_bin}")
+                    try:
+                        if Path(java_bin).exists():
+                            print(f"Found Java after installation at: {path}")
+                            return path
+                    except Exception as e:
+                        print(f"Error re-checking {java_bin}: {e}")
+                
+                # Try system PATH again after installation
+                try:
+                    which_result = subprocess.run(["which", "java"], capture_output=True, text=True)
+                    if which_result.returncode == 0:
+                        java_binary_path = which_result.stdout.strip()
+                        print(f"Found java in PATH after installation: {java_binary_path}")
+                        if "/bin/java" in java_binary_path:
+                            java_home = java_binary_path.replace("/bin/java", "")
+                            print(f"Using JAVA_HOME after installation: {java_home}")
+                            return java_home
+                except Exception as e:
+                    print(f"Error finding java in PATH after installation: {e}")
+            else:
+                print("Java installation failed")
+                
+        except Exception as e:
+            print(f"Error during Java installation attempt: {e}")
         
         return None
     
