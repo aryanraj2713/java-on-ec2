@@ -326,7 +326,6 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment != ''
     environment: ${{ github.event.inputs.environment }}
-    when: manual
     
     steps:
     - name: Checkout code
