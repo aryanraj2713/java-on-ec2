@@ -103,6 +103,32 @@ Host github.com
         try:
             print(f"Building Java application in: {self.target_dir}")
             
+            # Set up Java environment
+            java_home = "/usr/lib/jvm/java-17-amazon-corretto"
+            java_bin_path = f"{java_home}/bin"
+            
+            # Create environment with Java paths
+            env = os.environ.copy()
+            env["JAVA_HOME"] = java_home
+            env["PATH"] = f"{java_bin_path}:{env.get('PATH', '')}"
+            
+            print(f"Setting JAVA_HOME to: {java_home}")
+            print(f"Java PATH: {java_bin_path}")
+            
+            # Verify Java installation
+            try:
+                java_version_result = subprocess.run(
+                    ["java", "-version"], 
+                    env=env, 
+                    capture_output=True, 
+                    text=True
+                )
+                print(f"Java version check result: {java_version_result.returncode}")
+                if java_version_result.stderr:
+                    print(f"Java version output: {java_version_result.stderr[:200]}")
+            except Exception as e:
+                print(f"Java version check failed: {e}")
+            
             # Check for gradlew first
             gradlew_path = self.target_dir / "gradlew"
             if gradlew_path.exists():
@@ -115,7 +141,7 @@ Host github.com
                 print("gradlew not found, trying system gradle")
                 # Try to use system gradle as fallback
                 try:
-                    result = subprocess.run(["which", "gradle"], capture_output=True, text=True)
+                    result = subprocess.run(["which", "gradle"], env=env, capture_output=True, text=True)
                     if result.returncode == 0:
                         print("Using system gradle")
                         build_command = ["gradle", "build"]
@@ -129,7 +155,12 @@ Host github.com
             # Build the application
             print(f"Running build command: {' '.join(build_command)}")
             result = subprocess.run(
-                build_command, cwd=str(self.target_dir), capture_output=True, text=True, check=True
+                build_command, 
+                cwd=str(self.target_dir), 
+                env=env,  # Pass the Java environment
+                capture_output=True, 
+                text=True, 
+                check=True
             )
             
             print(f"Build completed successfully")
@@ -165,9 +196,17 @@ Host github.com
             
             print(f"Starting Java application: {jar_path} on port {self.java_port}")
             
+            # Set up Java environment (same as build)
+            java_home = "/usr/lib/jvm/java-17-amazon-corretto"
+            java_bin_path = f"{java_home}/bin"
+            
+            env = os.environ.copy()
+            env["JAVA_HOME"] = java_home
+            env["PATH"] = f"{java_bin_path}:{env.get('PATH', '')}"
+            
             self.java_process = subprocess.Popen([
                 "java", "-jar", str(jar_path)
-            ], cwd=str(self.target_dir), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            ], cwd=str(self.target_dir), stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
             
             time.sleep(2)
             
