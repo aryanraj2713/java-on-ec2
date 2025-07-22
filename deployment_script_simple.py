@@ -74,6 +74,21 @@ Host github.com
             ], capture_output=True, text=True, check=True)
             
             print(f"Repository cloned successfully: {len(result.stdout)} bytes output")
+            
+            # Debug: List contents of cloned directory
+            print(f"Contents of {self.target_dir}:")
+            try:
+                for item in self.target_dir.iterdir():
+                    print(f"  {item.name} ({'dir' if item.is_dir() else 'file'})")
+                
+                # Check specifically for gradlew
+                gradlew_path = self.target_dir / "gradlew"
+                print(f"gradlew exists: {gradlew_path.exists()}")
+                if gradlew_path.exists():
+                    print(f"gradlew permissions: {oct(gradlew_path.stat().st_mode)}")
+            except Exception as e:
+                print(f"Error listing directory contents: {e}")
+            
             return True
             
         except subprocess.CalledProcessError as e:
@@ -88,20 +103,32 @@ Host github.com
         try:
             print(f"Building Java application in: {self.target_dir}")
             
-            # Make gradlew executable
+            # Check for gradlew first
             gradlew_path = self.target_dir / "gradlew"
             if gradlew_path.exists():
                 print("Making gradlew executable")
                 gradlew_path.chmod(0o755)
+                build_command = [str(gradlew_path), "build"]
             else:
-                print("ERROR: gradlew not found in repository")
-                return False
+                print("gradlew not found, trying system gradle")
+                # Try to use system gradle as fallback
+                try:
+                    result = subprocess.run(["which", "gradle"], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        print("Using system gradle")
+                        build_command = ["gradle", "build"]
+                    else:
+                        print("ERROR: Neither gradlew nor system gradle found")
+                        return False
+                except Exception as e:
+                    print(f"ERROR: Could not find gradle: {e}")
+                    return False
             
             # Build the application
-            print("Running gradle build...")
-            result = subprocess.run([
-                str(gradlew_path), "build"
-            ], cwd=str(self.target_dir), capture_output=True, text=True, check=True)
+            print(f"Running build command: {' '.join(build_command)}")
+            result = subprocess.run(
+                build_command, cwd=str(self.target_dir), capture_output=True, text=True, check=True
+            )
             
             print(f"Build completed successfully")
             print(f"Build output: {result.stdout[-500:] if result.stdout else 'None'}")  # Last 500 chars
