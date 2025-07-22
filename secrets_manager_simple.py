@@ -3,7 +3,7 @@ from botocore.exceptions import ClientError, NoCredentialsError, BotoCoreError
 import json
 from typing import Optional, Dict, Any
 
-def get_secret(secret_name: str = "LF_TOKEN", region_name: str = "us-east-1") -> Optional[str]:
+def get_secret(secret_name: str = "LF_TOKEN", region_name: str = "eu-north-1") -> Optional[str]:
     
     print(f"Starting secret retrieval: {secret_name} in {region_name}")
     
@@ -56,7 +56,7 @@ def get_secret(secret_name: str = "LF_TOKEN", region_name: str = "us-east-1") ->
         print(f"ERROR: Unexpected error occurred: {e}")
         return None
 
-def get_secret_dict(secret_name: str, region_name: str = "us-east-1") -> Optional[Dict[str, Any]]:
+def get_secret_dict(secret_name: str, region_name: str = "eu-north-1") -> Optional[Dict[str, Any]]:
     
     print(f"Retrieving secret as JSON dictionary: {secret_name}")
     

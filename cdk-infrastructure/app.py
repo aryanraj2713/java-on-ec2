@@ -11,7 +11,7 @@ load_dotenv()
 app = App()
 
 account = os.environ.get('CDK_DEFAULT_ACCOUNT')
-region = os.environ.get('CDK_DEFAULT_REGION', 'us-east-1')
+region = os.environ.get('CDK_DEFAULT_REGION', 'eu-north-1')
 environment_name = os.environ.get('ENVIRONMENT_NAME', 'dev')
 
 ec2_deployment_stack = EC2DeploymentStack(

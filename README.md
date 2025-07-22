@@ -6,7 +6,7 @@
 
 1. **Deploy infrastructure**
    ```bash
-   ./scripts/setup-infrastructure.sh dev us-east-1
+   ./scripts/setup-infrastructure.sh dev eu-north-1
    ```
 
 2. **Add GitHub secrets**

@@ -3,7 +3,7 @@
 set -e
 
 ENVIRONMENT=${1:-dev}
-AWS_REGION=${2:-us-east-1}
+AWS_REGION=${2:-eu-north-1}
 
 echo "Setting up infrastructure for environment: $ENVIRONMENT in region: $AWS_REGION"
 

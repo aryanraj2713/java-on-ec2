@@ -18,7 +18,7 @@ on:
         - prod
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: eu-north-1
   JAVA_VERSION: '17'
   PYTHON_VERSION: '3.9'
 

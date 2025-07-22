@@ -23,7 +23,7 @@ class JavaAppDeployer:
             
             ssh_key = get_secret(
                 secret_name=os.environ.get("SSH_SECRET_NAME", "java-app-ssh-key"),
-                region_name=os.environ.get("AWS_REGION", "us-east-1")
+                region_name=os.environ.get("AWS_REGION", "eu-north-1")
             )
             
             if not ssh_key:
