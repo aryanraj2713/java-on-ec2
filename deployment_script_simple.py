@@ -103,16 +103,19 @@ Host github.com
         try:
             print(f"Building Java application in: {self.target_dir}")
             
-            # Set up Java environment
-            java_home = "/usr/lib/jvm/java-17-amazon-corretto"
-            java_bin_path = f"{java_home}/bin"
+            # Find Java installation dynamically
+            java_home = self._find_java_home()
+            if not java_home:
+                print("ERROR: Could not find Java installation")
+                return False
             
             # Create environment with Java paths
             env = os.environ.copy()
             env["JAVA_HOME"] = java_home
+            java_bin_path = f"{java_home}/bin"
             env["PATH"] = f"{java_bin_path}:{env.get('PATH', '')}"
             
-            print(f"Setting JAVA_HOME to: {java_home}")
+            print(f"Using JAVA_HOME: {java_home}")
             print(f"Java PATH: {java_bin_path}")
             
             # Verify Java installation
@@ -126,8 +129,12 @@ Host github.com
                 print(f"Java version check result: {java_version_result.returncode}")
                 if java_version_result.stderr:
                     print(f"Java version output: {java_version_result.stderr[:200]}")
+                if java_version_result.returncode != 0:
+                    print("ERROR: Java version check failed")
+                    return False
             except Exception as e:
                 print(f"Java version check failed: {e}")
+                return False
             
             # Check for gradlew first
             gradlew_path = self.target_dir / "gradlew"
@@ -190,18 +197,63 @@ Host github.com
             print(f"ERROR: JAR file not found: {jar_path}")
             return False
     
+    def _find_java_home(self) -> str:
+        """Find Java installation dynamically"""
+        java_paths_to_try = [
+            "/usr/lib/jvm/java-17-amazon-corretto",
+            "/usr/lib/jvm/java-17-amazon-corretto.x86_64", 
+            "/usr/lib/jvm/java-17-openjdk",
+            "/usr/lib/jvm/java-17",
+            "/usr/java/amazon-corretto-17",
+            "/opt/java/openjdk"
+        ]
+        
+        print("Searching for Java installation...")
+        for path in java_paths_to_try:
+            java_bin = f"{path}/bin/java"
+            print(f"Checking: {java_bin}")
+            try:
+                if Path(java_bin).exists():
+                    print(f"Found Java at: {path}")
+                    return path
+            except Exception as e:
+                print(f"Error checking {java_bin}: {e}")
+        
+        # Fallback: try to find java in system PATH
+        print("Java not found in standard locations, trying system PATH...")
+        try:
+            which_result = subprocess.run(["which", "java"], capture_output=True, text=True)
+            if which_result.returncode == 0:
+                java_binary_path = which_result.stdout.strip()
+                print(f"Found java binary at: {java_binary_path}")
+                # Try to determine JAVA_HOME from binary path
+                if "/bin/java" in java_binary_path:
+                    java_home = java_binary_path.replace("/bin/java", "")
+                    print(f"Derived JAVA_HOME: {java_home}")
+                    return java_home
+                else:
+                    print("Using system java without JAVA_HOME")
+                    return None
+        except Exception as e:
+            print(f"Error finding java in PATH: {e}")
+        
+        return None
+    
     def start_java_process(self) -> bool:
         try:
             jar_path = self.target_dir / "build" / "libs" / "project.jar"
             
             print(f"Starting Java application: {jar_path} on port {self.java_port}")
             
-            # Set up Java environment (same as build)
-            java_home = "/usr/lib/jvm/java-17-amazon-corretto"
-            java_bin_path = f"{java_home}/bin"
+            # Find Java installation (same logic as build)
+            java_home = self._find_java_home()
+            if not java_home:
+                print("ERROR: Could not find Java installation for starting application")
+                return False
             
             env = os.environ.copy()
             env["JAVA_HOME"] = java_home
+            java_bin_path = f"{java_home}/bin"
             env["PATH"] = f"{java_bin_path}:{env.get('PATH', '')}"
             
             self.java_process = subprocess.Popen([
