@@ -63,12 +63,13 @@ class JavaAppStack(Stack):
         return cluster
     
     def _create_ecr_repository(self) -> ecr.Repository:
-        repository = ecr.Repository(
+        # Reference existing ECR repository (created by GitHub workflow)
+        repository_name = f"java-app-{self.environment_name}"
+        
+        repository = ecr.Repository.from_repository_name(
             self,
             "JavaAppRepository",
-            repository_name=f"java-app-{self.environment_name}",
-            removal_policy=RemovalPolicy.DESTROY,
-            image_scan_on_push=True
+            repository_name
         )
         
         return repository
