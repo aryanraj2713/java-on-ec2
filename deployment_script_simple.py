@@ -84,6 +84,39 @@ Host github.com
             print(f"ERROR: Unexpected error during clone: {e}")
             return False
     
+    def build_java_application(self) -> bool:
+        try:
+            print(f"Building Java application in: {self.target_dir}")
+            
+            # Make gradlew executable
+            gradlew_path = self.target_dir / "gradlew"
+            if gradlew_path.exists():
+                print("Making gradlew executable")
+                gradlew_path.chmod(0o755)
+            else:
+                print("ERROR: gradlew not found in repository")
+                return False
+            
+            # Build the application
+            print("Running gradle build...")
+            result = subprocess.run([
+                str(gradlew_path), "build"
+            ], cwd=str(self.target_dir), capture_output=True, text=True, check=True)
+            
+            print(f"Build completed successfully")
+            print(f"Build output: {result.stdout[-500:] if result.stdout else 'None'}")  # Last 500 chars
+            return True
+            
+        except subprocess.CalledProcessError as e:
+            print(f"ERROR: Build failed: {e.returncode}")
+            print(f"STDOUT: {e.stdout if e.stdout else 'None'}")
+            print(f"STDERR: {e.stderr if e.stderr else 'None'}")
+            return False
+        
+        except Exception as e:
+            print(f"ERROR: Unexpected error during build: {e}")
+            return False
+    
     def verify_jar_exists(self) -> bool:
         jar_path = self.target_dir / "build" / "libs" / "project.jar"
         
@@ -149,6 +182,10 @@ Host github.com
             
             if not self.clone_repository():
                 print("ERROR: Repository clone failed")
+                return False
+            
+            if not self.build_java_application():
+                print("ERROR: Java application build failed")
                 return False
             
             if not self.verify_jar_exists():
