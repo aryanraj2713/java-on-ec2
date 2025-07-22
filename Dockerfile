@@ -1,4 +1,4 @@
-FROM openjdk:17-jdk-slim as builder
+FROM openjdk:17-jdk-slim AS builder
 
 RUN apt-get update && apt-get install -y \
     git \
@@ -26,18 +26,18 @@ RUN apt-get update && apt-get install -y \
 
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
+RUN mkdir -p /app && \
+    chown -R appuser:appuser /app && \
+    mkdir -p /home/appuser/.ssh && \
+    chown -R appuser:appuser /home/appuser/.ssh && \
+    chmod 700 /home/appuser/.ssh
+
 WORKDIR /app
 
 COPY --from=builder /usr/local/bin/deployment_script.py /usr/local/bin/deployment_script.py
 RUN chmod +x /usr/local/bin/deployment_script.py
 
-RUN mkdir -p /home/appuser/.ssh && \
-    chown -R appuser:appuser /home/appuser/.ssh && \
-    chmod 700 /home/appuser/.ssh
-
 USER appuser
-
-RUN mkdir -p /app && chown appuser:appuser /app
 
 EXPOSE 9000
 
