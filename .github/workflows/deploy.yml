@@ -1,0 +1,311 @@
+name: Deploy Java Application
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+        - dev
+        - staging
+        - prod
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: java-app
+  JAVA_VERSION: '17'
+  PYTHON_VERSION: '3.9'
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+
+    - name: Cache Gradle packages
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Build with Gradle
+      run: ./gradlew build
+
+    - name: Run tests
+      run: ./gradlew test
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: jar-artifact
+        path: build/libs/*.jar
+
+  build-push-image:
+    needs: build-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: jar-artifact
+        path: build/libs/
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy:
+    needs: [build-test, build-push-image]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    strategy:
+      matrix:
+        environment: 
+          - ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'dev') }}
+    
+    environment: ${{ matrix.environment }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup SSH key for EC2 access
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.EC2_PRIVATE_KEY }}" > ~/.ssh/deploy-key
+        chmod 600 ~/.ssh/deploy-key
+        
+        ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+
+    - name: Launch EC2 instance
+      id: launch-ec2
+      run: |
+        INSTANCE_ID=$(aws ec2 run-instances \
+          --image-id ami-0c02fb55956c7d316 \
+          --instance-type t3.micro \
+          --key-name ${{ secrets.EC2_KEY_NAME }} \
+          --security-group-ids ${{ secrets.EC2_SECURITY_GROUP_ID }} \
+          --subnet-id ${{ secrets.EC2_SUBNET_ID }} \
+          --iam-instance-profile Name=EC2-DeploymentRole-${{ matrix.environment }} \
+          --user-data file://scripts/ec2-userdata.sh \
+          --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=JavaApp-Deploy-${{ matrix.environment }}-${{ github.run_id }}},{Key=Environment,Value=${{ matrix.environment }}},{Key=Project,Value=JavaApp},{Key=AutoShutdown,Value=true}]' \
+          --query 'Instances[0].InstanceId' \
+          --output text)
+        
+        echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+        echo "Launched EC2 instance: $INSTANCE_ID"
+
+    - name: Wait for EC2 instance to be running
+      run: |
+        echo "Waiting for instance ${{ steps.launch-ec2.outputs.instance_id }} to be running..."
+        aws ec2 wait instance-running --instance-ids ${{ steps.launch-ec2.outputs.instance_id }}
+        
+        sleep 60
+        
+        INSTANCE_IP=$(aws ec2 describe-instances \
+          --instance-ids ${{ steps.launch-ec2.outputs.instance_id }} \
+          --query 'Reservations[0].Instances[0].PublicIpAddress' \
+          --output text)
+        
+        echo "Instance running at IP: $INSTANCE_IP"
+        echo "INSTANCE_IP=$INSTANCE_IP" >> $GITHUB_ENV
+
+    - name: Execute deployment on EC2
+      run: |
+        cat > deploy_commands.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        export ENVIRONMENT=${{ matrix.environment }}
+        export LOGFIRE_TOKEN="${{ secrets.LOGFIRE_TOKEN }}"
+        export AWS_REGION=${{ env.AWS_REGION }}
+        export SSH_SECRET_NAME="java-app-ssh-key-${{ matrix.environment }}"
+        
+        cd /home/ec2-user/deployment
+        
+        echo "Installing dependencies..."
+        pip3 install -r requirements-secrets.txt
+        
+        echo "Starting deployment with Logfire logging..."
+        python3 deployment_script.py ${{ github.server_url }}/${{ github.repository }}.git \
+          --target-dir ./app \
+          --port 9000
+        
+        echo "Deployment completed successfully"
+        
+        if [ -f ./app/build/libs/project.jar ]; then
+          echo "JAR file verified: $(ls -la ./app/build/libs/project.jar)"
+        else
+          echo "ERROR: JAR file not found"
+          exit 1
+        fi
+        
+        echo "Testing application..."
+        timeout 30 bash -c 'until curl -s http://localhost:9000/health || curl -s http://localhost:9000; do sleep 2; done' || echo "Application health check timeout"
+        
+        echo "Deployment verification complete"
+        EOF
+        
+        scp -i ~/.ssh/deploy-key -o StrictHostKeyChecking=no \
+          deploy_commands.sh ec2-user@${{ env.INSTANCE_IP }}:/tmp/
+        
+        ssh -i ~/.ssh/deploy-key -o StrictHostKeyChecking=no \
+          ec2-user@${{ env.INSTANCE_IP }} \
+          "chmod +x /tmp/deploy_commands.sh && /tmp/deploy_commands.sh"
+
+    - name: Collect deployment logs
+      if: always()
+      run: |
+        mkdir -p deployment-logs
+        
+        ssh -i ~/.ssh/deploy-key -o StrictHostKeyChecking=no \
+          ec2-user@${{ env.INSTANCE_IP }} \
+          "sudo journalctl -u cloud-init-output.log --no-pager" > deployment-logs/cloud-init.log || true
+        
+        ssh -i ~/.ssh/deploy-key -o StrictHostKeyChecking=no \
+          ec2-user@${{ env.INSTANCE_IP }} \
+          "cat /var/log/deployment.log" > deployment-logs/deployment.log 2>/dev/null || true
+        
+        echo "Deployment logs collected"
+
+    - name: Upload deployment logs
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: deployment-logs-${{ matrix.environment }}-${{ github.run_id }}
+        path: deployment-logs/
+
+    - name: Cleanup and terminate EC2 instance
+      if: always()
+      run: |
+        echo "Cleaning up EC2 instance ${{ steps.launch-ec2.outputs.instance_id }}..."
+        
+        aws ec2 terminate-instances --instance-ids ${{ steps.launch-ec2.outputs.instance_id }}
+        
+        echo "Waiting for instance termination..."
+        aws ec2 wait instance-terminated --instance-ids ${{ steps.launch-ec2.outputs.instance_id }}
+        
+        echo "EC2 instance terminated successfully"
+
+  security-scan:
+    needs: build-push-image
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Scan ECR image
+      run: |
+        aws ecr describe-images \
+          --repository-name ${{ env.ECR_REPOSITORY }} \
+          --image-ids imageTag=${{ github.sha }} \
+          --query 'imageDetails[0].imageScanFindingsSummary'
+
+  rollback:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment != ''
+    environment: ${{ github.event.inputs.environment }}
+    when: manual
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Rollback ECS Service
+      run: |
+        CURRENT_TASK_DEF=$(aws ecs describe-services \
+          --cluster JavaAppCluster-${{ github.event.inputs.environment }} \
+          --services JavaAppService \
+          --query 'services[0].taskDefinition' \
+          --output text)
+        
+        echo "Current task definition: $CURRENT_TASK_DEF"
+        
+        aws ecs update-service \
+          --cluster JavaAppCluster-${{ github.event.inputs.environment }} \
+          --service JavaAppService \
+          --force-new-deployment 
