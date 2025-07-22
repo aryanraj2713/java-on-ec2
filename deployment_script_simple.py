@@ -7,7 +7,7 @@ import time
 import signal
 from pathlib import Path
 import argparse
-from secrets_manager import get_secret
+from secrets_manager_simple import get_secret
 from typing import Optional
 
 class JavaAppDeployer:
