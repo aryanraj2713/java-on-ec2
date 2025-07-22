@@ -354,37 +354,6 @@ jobs:
           echo "No instance ID found, skipping cleanup"
         fi
 
-  security-scan:
-    needs: build-push-image
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    
-    steps:
-    - name: Set environment variables
-      run: |
-        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-          ENVIRONMENT="${{ github.event.inputs.environment }}"
-        elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
-          ENVIRONMENT="prod"
-        else
-          ENVIRONMENT="dev"
-        fi
-        echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_ENV
-        echo "ECR_REPOSITORY=java-app-$ENVIRONMENT" >> $GITHUB_ENV
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-
-    - name: Scan ECR image
-      run: |
-        aws ecr describe-images \
-          --repository-name ${{ env.ECR_REPOSITORY }} \
-          --image-ids imageTag=${{ github.sha }} \
-          --query 'imageDetails[0].imageScanFindingsSummary'
 
   rollback:
     runs-on: ubuntu-latest
