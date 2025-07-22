@@ -9,9 +9,10 @@ import logfire
 from pathlib import Path
 import argparse
 from secrets_manager import get_secret
+from logfire_config import auto_configure
 from typing import Optional
 
-logfire.configure()
+auto_configure()
 
 class JavaAppDeployer:
     def __init__(self, repo_url: str, target_dir: str = "./app", java_port: int = 9000):

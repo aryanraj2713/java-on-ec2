@@ -140,12 +140,56 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install CDK dependencies
+      run: |
+        cd cdk-infrastructure
+        pip install -r requirements.txt
+
+    - name: Install AWS CDK
+      run: npm install -g aws-cdk
+
+    - name: Deploy EC2 infrastructure
+      run: |
+        cd cdk-infrastructure
+        export ENVIRONMENT_NAME=${{ matrix.environment }}
+        cdk bootstrap
+        cdk deploy EC2DeploymentStack-${{ matrix.environment }} --require-approval never --outputs-file ec2-outputs.json
+
+    - name: Extract infrastructure values
+      id: infra
+      run: |
+        cd cdk-infrastructure
+        
+        SECURITY_GROUP_ID=$(cat ec2-outputs.json | jq -r ".\"EC2DeploymentStack-${{ matrix.environment }}\".SecurityGroupId")
+        SUBNET_ID=$(cat ec2-outputs.json | jq -r ".\"EC2DeploymentStack-${{ matrix.environment }}\".SubnetId")
+        KEY_PAIR_NAME=$(cat ec2-outputs.json | jq -r ".\"EC2DeploymentStack-${{ matrix.environment }}\".KeyPairName")
+        
+        echo "security_group_id=$SECURITY_GROUP_ID" >> $GITHUB_OUTPUT
+        echo "subnet_id=$SUBNET_ID" >> $GITHUB_OUTPUT
+        echo "key_pair_name=$KEY_PAIR_NAME" >> $GITHUB_OUTPUT
+        
+        echo "Infrastructure values extracted:"
+        echo "Security Group: $SECURITY_GROUP_ID"
+        echo "Subnet: $SUBNET_ID"
+        echo "Key Pair: $KEY_PAIR_NAME"
+
     - name: Setup SSH key for EC2 access
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.EC2_PRIVATE_KEY }}" > ~/.ssh/deploy-key
-        chmod 600 ~/.ssh/deploy-key
         
+        # Get private key from AWS Systems Manager Parameter Store
+        aws ssm get-parameter \
+          --name /ec2/keypair/${{ steps.infra.outputs.key_pair_name }} \
+          --with-decryption \
+          --query Parameter.Value \
+          --output text > ~/.ssh/deploy-key
+        
+        chmod 600 ~/.ssh/deploy-key
         ssh-keyscan -H github.com >> ~/.ssh/known_hosts
 
     - name: Launch EC2 instance
@@ -154,9 +198,9 @@ jobs:
         INSTANCE_ID=$(aws ec2 run-instances \
           --image-id ami-0c02fb55956c7d316 \
           --instance-type t3.micro \
-          --key-name ${{ secrets.EC2_KEY_NAME }} \
-          --security-group-ids ${{ secrets.EC2_SECURITY_GROUP_ID }} \
-          --subnet-id ${{ secrets.EC2_SUBNET_ID }} \
+          --key-name ${{ steps.infra.outputs.key_pair_name }} \
+          --security-group-ids ${{ steps.infra.outputs.security_group_id }} \
+          --subnet-id ${{ steps.infra.outputs.subnet_id }} \
           --iam-instance-profile Name=EC2-DeploymentRole-${{ matrix.environment }} \
           --user-data file://scripts/ec2-userdata.sh \
           --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=JavaApp-Deploy-${{ matrix.environment }}-${{ github.run_id }}},{Key=Environment,Value=${{ matrix.environment }}},{Key=Project,Value=JavaApp},{Key=AutoShutdown,Value=true}]' \
@@ -187,10 +231,10 @@ jobs:
         #!/bin/bash
         set -e
         
-        export ENVIRONMENT=${{ matrix.environment }}
-        export LOGFIRE_TOKEN="${{ secrets.LOGFIRE_TOKEN }}"
-        export AWS_REGION=${{ env.AWS_REGION }}
-        export SSH_SECRET_NAME="java-app-ssh-key-${{ matrix.environment }}"
+                 export ENVIRONMENT=${{ matrix.environment }}
+         export AWS_REGION=${{ env.AWS_REGION }}
+         export SSH_SECRET_NAME="java-app-ssh-key-${{ matrix.environment }}"
+         export LOGFIRE_SECRET_NAME="LF_TOKEN"
         
         cd /home/ec2-user/deployment
         

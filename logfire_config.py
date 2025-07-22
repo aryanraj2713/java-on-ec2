@@ -49,7 +49,7 @@ def get_logfire_token_from_secrets() -> Optional[str]:
             return logfire_token
             
     except Exception as e:
-        logfire.warning("Failed to retrieve Logfire token from Secrets Manager", error=str(e))
+        print(f"Failed to retrieve Logfire token from Secrets Manager: {e}")
     
     return os.environ.get("LOGFIRE_TOKEN")
 
@@ -75,10 +75,18 @@ def configure_for_development():
 def auto_configure():
     environment = os.environ.get("ENVIRONMENT", "development").lower()
     
+    token = get_logfire_token_from_secrets()
+    
     if environment in ["production", "prod"]:
-        configure_for_production()
+        if token:
+            setup_logfire(
+                service_name="java-app-deployment-prod",
+                environment="production",
+                debug=False
+            )
+        else:
+            raise ValueError("Logfire token not found in Secrets Manager or environment variables")
     elif environment in ["staging", "stage"]:
-        token = get_logfire_token_from_secrets()
         if token:
             setup_logfire(
                 service_name="java-app-deployment-staging",
@@ -88,7 +96,19 @@ def auto_configure():
         else:
             configure_for_development()
     else:
-        configure_for_development()
+        if token:
+            setup_logfire(
+                service_name="java-app-deployment-dev",
+                environment="development",
+                debug=True
+            )
+        else:
+            print("Warning: Logfire token not found, using basic configuration")
+            setup_logfire(
+                service_name="java-app-deployment-dev",
+                environment="development",
+                debug=True
+            )
 
 if __name__ == "__main__":
     auto_configure()
