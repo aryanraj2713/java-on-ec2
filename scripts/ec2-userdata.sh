@@ -7,7 +7,17 @@ echo "Starting EC2 user data script at $(date)"
 yum update -y
 
 echo "Installing required packages..."
-yum install -y git python3 python3-pip java-17-amazon-corretto-headless curl wget
+yum install -y git curl wget
+
+echo "Installing Python 3.9 from Amazon Linux Extras..."
+amazon-linux-extras install python3.8 -y
+
+echo "Installing Java 17..."
+yum install -y java-17-amazon-corretto-headless
+
+echo "Setting up Python 3.8 as default..."
+alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1
+alternatives --install /usr/bin/pip3 pip3 /usr/bin/pip3.8 1
 
 echo "Installing Gradle..."
 wget https://services.gradle.org/distributions/gradle-8.4-bin.zip -P /tmp

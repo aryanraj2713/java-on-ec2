@@ -279,13 +279,13 @@ jobs:
         cd /home/ec2-user/deployment
         
         echo "Copying deployment files to deployment directory..."
-        cp ~/deployment_script.py ~/logfire_config.py ~/secrets_manager.py ~/requirements-secrets.txt .
+        cp ~/deployment_script_simple.py ~/secrets_manager_simple.py ~/requirements-secrets-simple.txt .
         
         echo "Installing Python dependencies..."
-        pip3 install --user -r requirements-secrets.txt
+        pip3 install --user -r requirements-secrets-simple.txt
         
-        echo "Starting deployment with Logfire logging..."
-        python3 deployment_script.py ${{ github.server_url }}/${{ github.repository }}.git \
+        echo "Starting deployment..."
+        python3 deployment_script_simple.py ${{ github.server_url }}/${{ github.repository }}.git \
           --target-dir ./app \
           --port 9000
         
@@ -304,9 +304,9 @@ jobs:
         echo "Deployment verification complete"
         EOF
         
-        # Copy deployment files to EC2 instance
+        # Copy deployment files to EC2 instance (use simplified versions for Python 3.7 compatibility)
         scp -i ~/.ssh/deploy-key -o StrictHostKeyChecking=no \
-          deployment_script.py logfire_config.py secrets_manager.py requirements-secrets.txt \
+          deployment_script_simple.py secrets_manager_simple.py requirements-secrets-simple.txt \
           ec2-user@${{ env.INSTANCE_IP }}:/home/ec2-user/
         
         scp -i ~/.ssh/deploy-key -o StrictHostKeyChecking=no \
