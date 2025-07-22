@@ -346,8 +346,11 @@ Host github.com
             java_bin_path = f"{java_home}/bin"
             env["PATH"] = f"{java_bin_path}:{env.get('PATH', '')}"
             
+            # Use relative path for JAR when working directory is set to target_dir
+            relative_jar_path = "build/libs/project.jar"
+            
             self.java_process = subprocess.Popen([
-                "java", "-jar", str(jar_path)
+                "java", "-jar", relative_jar_path
             ], cwd=str(self.target_dir), stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
             
             time.sleep(2)
