@@ -1,40 +1,29 @@
-FROM openjdk:17-jdk-slim AS builder
+FROM openjdk:17-jre-slim
 
+# Install system dependencies in a single layer
 RUN apt-get update && apt-get install -y \
     git \
     openssh-client \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-COPY deployment_script.py /usr/local/bin/deployment_script.py
-RUN chmod +x /usr/local/bin/deployment_script.py
-
-RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
-    && rm -rf /var/lib/apt/lists/*
-
-FROM openjdk:17-jdk-slim
-
-RUN apt-get update && apt-get install -y \
-    git \
-    openssh-client \
-    python3 \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r appuser && useradd -r -g appuser appuser \
+    && mkdir -p /app /home/appuser/.ssh \
+    && chown -R appuser:appuser /app /home/appuser/.ssh \
+    && chmod 700 /home/appuser/.ssh
 
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+# Copy requirements first for better caching
+COPY requirements-docker.txt /tmp/requirements-docker.txt
 
-RUN mkdir -p /app && \
-    chown -R appuser:appuser /app && \
-    mkdir -p /home/appuser/.ssh && \
-    chown -R appuser:appuser /home/appuser/.ssh && \
-    chmod 700 /home/appuser/.ssh
+# Install Python dependencies
+RUN pip3 install --no-cache-dir -r /tmp/requirements-docker.txt \
+    && rm /tmp/requirements-docker.txt
 
 WORKDIR /app
 
-COPY --from=builder /usr/local/bin/deployment_script.py /usr/local/bin/deployment_script.py
+# Copy application files
+COPY deployment_script.py logfire_config.py secrets_manager.py /usr/local/bin/
 RUN chmod +x /usr/local/bin/deployment_script.py
 
 USER appuser
