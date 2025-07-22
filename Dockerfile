@@ -16,9 +16,13 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for better caching
 COPY requirements-docker.txt /tmp/requirements-docker.txt
 
-# Install Python dependencies
-RUN pip3 install --no-cache-dir -r /tmp/requirements-docker.txt \
+# Create virtual environment and install Python dependencies
+RUN python3 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements-docker.txt \
     && rm /tmp/requirements-docker.txt
+
+# Add virtual environment to PATH
+ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 
