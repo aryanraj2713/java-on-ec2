@@ -269,15 +269,20 @@ jobs:
         #!/bin/bash
         set -e
         
-                 export ENVIRONMENT=${{ matrix.environment }}
-         export AWS_REGION=${{ env.AWS_REGION }}
-         export SSH_SECRET_NAME="java-app-ssh-key-${{ matrix.environment }}"
-         export LOGFIRE_SECRET_NAME="LF_TOKEN"
+        export ENVIRONMENT=${{ matrix.environment }}
+        export AWS_REGION=${{ env.AWS_REGION }}
+        export SSH_SECRET_NAME="java-app-ssh-key-${{ matrix.environment }}"
+        export LOGFIRE_SECRET_NAME="LF_TOKEN"
         
+        echo "Setting up deployment directory..."
+        mkdir -p /home/ec2-user/deployment
         cd /home/ec2-user/deployment
         
-        echo "Installing dependencies..."
-        pip3 install -r requirements-secrets.txt
+        echo "Copying deployment files to deployment directory..."
+        cp ~/deployment_script.py ~/logfire_config.py ~/secrets_manager.py ~/requirements-secrets.txt .
+        
+        echo "Installing Python dependencies..."
+        pip3 install --user -r requirements-secrets.txt
         
         echo "Starting deployment with Logfire logging..."
         python3 deployment_script.py ${{ github.server_url }}/${{ github.repository }}.git \
@@ -298,6 +303,11 @@ jobs:
         
         echo "Deployment verification complete"
         EOF
+        
+        # Copy deployment files to EC2 instance
+        scp -i ~/.ssh/deploy-key -o StrictHostKeyChecking=no \
+          deployment_script.py logfire_config.py secrets_manager.py requirements-secrets.txt \
+          ec2-user@${{ env.INSTANCE_IP }}:/home/ec2-user/
         
         scp -i ~/.ssh/deploy-key -o StrictHostKeyChecking=no \
           deploy_commands.sh ec2-user@${{ env.INSTANCE_IP }}:/tmp/
