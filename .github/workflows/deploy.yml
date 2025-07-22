@@ -19,7 +19,6 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: java-app
   JAVA_VERSION: '17'
   PYTHON_VERSION: '3.9'
 
@@ -74,6 +73,20 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Set environment variables
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          ENVIRONMENT="${{ github.event.inputs.environment }}"
+        elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+          ENVIRONMENT="prod"
+        else
+          ENVIRONMENT="dev"
+        fi
+        echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_ENV
+        echo "ECR_REPOSITORY=java-app-$ENVIRONMENT" >> $GITHUB_ENV
+        echo "Using environment: $ENVIRONMENT"
+        echo "ECR repository: java-app-$ENVIRONMENT"
+
     - name: Download build artifacts
       uses: actions/download-artifact@v4
       with:
@@ -90,6 +103,21 @@ jobs:
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Create ECR repository if it doesn't exist
+      run: |
+        echo "Checking if ECR repository ${{ env.ECR_REPOSITORY }} exists..."
+        if ! aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+          echo "Repository does not exist. Creating ECR repository..."
+          aws ecr create-repository \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --region ${{ env.AWS_REGION }} \
+            --image-scanning-configuration scanOnPush=true \
+            --encryption-configuration encryptionType=AES256
+          echo "ECR repository created successfully"
+        else
+          echo "ECR repository already exists"
+        fi
 
     - name: Extract metadata
       id: meta
@@ -308,6 +336,18 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     
     steps:
+    - name: Set environment variables
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          ENVIRONMENT="${{ github.event.inputs.environment }}"
+        elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+          ENVIRONMENT="prod"
+        else
+          ENVIRONMENT="dev"
+        fi
+        echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_ENV
+        echo "ECR_REPOSITORY=java-app-$ENVIRONMENT" >> $GITHUB_ENV
+
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
